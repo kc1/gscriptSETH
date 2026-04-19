@@ -8,9 +8,11 @@ function onOpen() {
     , { name: '2) Run sethProp (runSethApp) with IMAGEAI to generate screenshots --api updated', functionName: 'postToSethProp' },
 
     { name: '3) Update selected rows with Screenshot Links from Named Mongo bucket (alcornBucket) ', functionName: 'updateWithScreenshotPaths' },
-    { name: '4) Auto Process Screenshot Links with LLM3 -- works in parallel', functionName: 'autoToLLM3' },
-    { name: '5) Calculate Points in multiple Rows', functionName: 'getPointsInMultipleRows' },
-    { name: '6) Auto Process Screenshot Links for Frontage -- works in parallel', functionName: 'getFrontageWithLLM' },
+    { name: '4)  Y/N on Available Road using WaterURL with LLM  -- works in parallel', functionName: 'roadAvailableUsingLLM' },
+
+    { name: '5) Auto Process Screenshot Links with LLM3 -- works in parallel', functionName: 'autoToLLM3' },
+    { name: '6) Calculate Points in multiple Rows', functionName: 'getPointsInMultipleRows' },
+    { name: '7) Auto Process Screenshot Links for Frontage -- works in parallel', functionName: 'getFrontageWithLLM' },
 
 
 
@@ -600,6 +602,8 @@ function prependNote2(sheet, row, column, text) {
 
 }
 
+
+
 function autoToLLM3() {
   // Get selected rows
   // const rowObjArr = getMultipleSelectedRowObjectsDiscontinuous();
@@ -779,6 +783,98 @@ function getPointsInMultipleRows() {
 
 }
 
+function roadAvailableUsingLLM() {
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sheet1');
+  let currentSheetObjArr = sheet2Json(sheet);
+  Logger.log("length: " + currentSheetObjArr.length);
+
+  const pushedRows = currentSheetObjArr.filter(x => {
+    if (x.WaterURL.includes("dropbox") && x.RoadAvailable == "") { return x }
+  })
+  let firstTenPushedRows = pushedRows.slice(0, 10);// get first 10 or less
+
+  Logger.log(JSON.stringify(firstTenPushedRows));
+
+  
+
+
+  let url = APIURL + 'openRouterRoadAvailable';
+  Logger.log(url);
+
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(firstTenPushedRows),
+    muteHttpExceptions: true
+  };
+
+
+  Logger.log('payload');
+
+  Logger.log(JSON.stringify(options));
+
+
+  try {
+    // Make the API request
+    const response = UrlFetchApp.fetch(url, options);
+
+    // Parse the JSON response if it is JSON
+    var result = JSON.parse(response.getContentText());
+
+    // Log the result
+    Logger.log(result.message);
+
+    const filteredRows = JSON.parse(result.results);
+
+
+    for (var i = 0; i < filteredRows.length; i++) {
+
+      const myRow = filteredRows[i];
+      Logger.log(myRow.RoadAvailable);
+
+      // const APN = result.message.APN;
+      // const APN2 = result.message.APN2;
+      // const GEOM = result.message.GEOM;
+
+      // var AN = updateCell(sheet, myRow, 'ContourResponse', myRow.ContourResponse);
+      // var AE = updateCell(sheet, myRow, 'WaterResponse', myRow.WaterResponse);
+
+      let Response = myRow.RoadAvailable;
+
+      let rResponse = Response.split('').reverse().join('');
+
+      rResponse = rResponse.substr(0, rResponse.indexOf("---"));
+
+      Response = rResponse.split('').reverse().join('');
+
+      Logger.log(Response);
+
+
+      let json = "{" + extractSubstring(Response, "{", "}") + "}";
+
+
+      Logger.log(json);
+
+      const obj = JSON.parse(json);
+
+
+      let YN = obj["AvailableRoad"];
+
+
+
+      var C = updateCell(sheet, myRow, 'RoadAvailable', YN);
+
+
+    }
+
+  } catch (error) {
+    // Log any errors
+    Logger.log(error);
+  }
+
+
+}
 
 function getFrontageWithLLM() {
 
@@ -787,7 +883,7 @@ function getFrontageWithLLM() {
   Logger.log("length: " + currentSheetObjArr.length);
 
   const pushedRows = currentSheetObjArr.filter(x => {
-    if (x.WaterURL.includes("dropbox") && x.calculatedPerimeterFeet !=="" && x.calcFrontage == "") { return x }
+    if (x.WaterURL.includes("dropbox") && x.calculatedPerimeterFeet !== "" && x.calcFrontage == "") { return x }
     // if ( x.calcFrontage == "") { return x }
 
   })
@@ -968,6 +1064,10 @@ function pushToNamedBucket(collection, numberToPush) {
   // const payload = getSelectedRowObject();
 
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sheet1');
+  // const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sheet2');
+
+
+
   const currentSheetObjArr = sheet2Json(sheet);
   Logger.log("length: " + currentSheetObjArr.length);
 

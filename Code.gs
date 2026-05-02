@@ -8,11 +8,23 @@ function onOpen() {
     , { name: '2) Run sethProp (runSethApp) with IMAGEAI to generate screenshots --api updated', functionName: 'postToSethProp' },
 
     { name: '3) Update selected rows with Screenshot Links from Named Mongo bucket (alcornBucket) ', functionName: 'updateWithScreenshotPaths' },
-    { name: '4)  Y/N on Available Road using WaterURL with LLM  -- works in parallel', functionName: 'roadAvailableUsingLLM' },
+
+    { name: '4A) GeoJSONio url builder from collection', functionName: 'GeoJSONioUrlBuilder' },
+
+    { name: '4B) GeoJSONio link push to collection', functionName: 'alcornGeoJsonPush' },
+
+    { name: '4C) Run buildScreenshotsFromLink (runSethApp) with IMAGEAI to generate screenshots ', functionName: 'postToBuildScreenshotsFromLink' },
+
+    { name: '4D) Update rows with Road Screenshot Links from collection (alcornGeoJsonBucket) ', functionName: 'updateWithRoadScreenshotPaths' },
+
+    { name: '4E)  Y/N on Available Road using WaterURL with LLM  -- works in parallel', functionName: 'roadAvailableUsingLLM' },
+
+
 
     { name: '5) Auto Process Screenshot Links with LLM3 -- works in parallel', functionName: 'autoToLLM3' },
     { name: '6) Calculate Points in multiple Rows', functionName: 'getPointsInMultipleRows' },
     { name: '7) Auto Process Screenshot Links for Frontage -- works in parallel', functionName: 'getFrontageWithLLM' },
+
 
 
 
@@ -29,7 +41,6 @@ function onOpen() {
 
     { name: 'Load Planning/Zoning data', functionName: 'loadPZ' },
     { name: 'Initial Planning/Zoning review request (email county PZ office)', functionName: 'initialMessagePZ' },
-    { name: 'GeoJSONio url builder from wkt', functionName: 'GeoJSONioUrlBuilder' },
     { name: 'Create KML file in Drive - then upload to GEOJSON.IO for map creation', functionName: 'buildKML' },
     { name: 'Modify Colours and titles of geojson file (copy geojson.io data into A10)', functionName: 'markupGeojson' },
 
@@ -83,6 +94,29 @@ function dummy() {
 
 function postToSethProp() {
   var url = 'https://image1.space/sethProp';
+
+  var payload = {
+    num: 30,
+    filterObj: {}
+  };
+
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  var response = UrlFetchApp.fetch(url, options);
+  Logger.log(response.getResponseCode());
+  Logger.log(response.getContentText());
+}
+
+function postToBuildScreenshotsFromLink() {
+  var url = 'https://image1.space/buildScreenshotsFromLink';
 
   var payload = {
     num: 30,
@@ -430,9 +464,14 @@ function updateWithScreenshotPaths() {
 
   autoUpdateWithScreenshotPaths("alcornBucket", 20);
 
-
 }
 
+function updateWithRoadScreenshotPaths() {
+
+  const isPushed = (x) => x.RoadURL === "PUSHED";
+  baseUpdateWithScreenshotPaths("alcornGeoJsonBucket", 20, isPushed);
+
+}
 
 function autoUpdateWithScreenshotPaths(collectionName, numberToPull) {
 
@@ -518,6 +557,68 @@ function autoUpdateWithScreenshotPaths(collectionName, numberToPull) {
     SpreadsheetApp.getUi().alert("You may need to rerun step 5!");
   }
 }
+
+
+
+function baseUpdateWithScreenshotPaths(collectionName, numberToPull, filterFunction) {
+
+  // const responseObjArr = getMultipleSelectedRowObjects();
+  // const responseObjArr = getMultipleSelectedRowObjectsDiscontinuous();
+  // const payload = getSelectedRowObject();
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sheet1');
+  let currentSheetObjArr = sheet2Json(sheet);
+  Logger.log("length: " + currentSheetObjArr.length);
+
+
+  const pushedRows = currentSheetObjArr.filter(filterFunction);
+
+  let firstXPushedRows = pushedRows.slice(0, numberToPull);// get first 50 or less
+
+  Logger.log('out');
+  const IDS = firstXPushedRows.map(x => x.ID);
+  Logger.log(IDS);
+
+
+  const filterObj = { ID: { $in: IDS } };
+
+  const myJSON = fetchMongoDBDataAPI(filterObj, collectionName)
+
+  Logger.log(myJSON);
+  const myObjects = JSON.parse(myJSON);
+  let mongoRecords = myObjects.documents;
+
+  let rowUploadedToBucketFlag = true; // STEP 4
+  let rowUpdatedWithLinksFlag = true; // STEP 5
+
+
+  for (var i = 0; i < firstXPushedRows.length; i++) { //right now its > 2000 - I'll scan first 300 properties
+    // for (var i = 0; i < 300; i++) { //right now its > 2000 - I'll scan first 300 properties
+    const myRow = firstXPushedRows[i];
+
+    // const currentSheetObjArr = objArr[i];
+    // if (listing_ids.includes(myRow.listing_id)) {
+
+    let filteredRecords = mongoRecords.filter(mongoRow => mongoRow.ID === myRow.ID);
+    Logger.log(filteredRecords);
+
+    if (filteredRecords.length) {
+
+      const filteredRecord = filteredRecords.pop(); // get the first , likely only record.
+
+      var roadFile = filteredRecord?.RoadURL
+
+      if (roadFile.startsWith("http")) { // ie UPDATED step 5.
+        var C = updateCell(sheet, myRow, 'RoadURL', roadFile);
+      }
+    } else {
+      var C = updateCell(sheet, myRow, 'RoadURL', "");
+    }
+
+  }
+
+}
+
 
 
 // function addNote2(text = "", column = "NOTES") {
@@ -790,13 +891,18 @@ function roadAvailableUsingLLM() {
   Logger.log("length: " + currentSheetObjArr.length);
 
   const pushedRows = currentSheetObjArr.filter(x => {
-    if (x.WaterURL.includes("dropbox") && x.RoadAvailable == "") { return x }
+    if (x.WaterURL.includes("dropbox") && !String(x.RoadAvailable || "")) { return x }
   })
+
+  // x.WaterURL.includes("box") && !String(x.available || "").trim()
+
+
+
   let firstTenPushedRows = pushedRows.slice(0, 10);// get first 10 or less
 
   Logger.log(JSON.stringify(firstTenPushedRows));
 
-  
+
 
 
   let url = APIURL + 'openRouterRoadAvailable';
@@ -1052,7 +1158,11 @@ function alcornPush() {
 
 }
 
+function alcornGeoJsonPush() {
 
+  resp = geoJsonPush('alcornGeoJsonBucket', 3);
+
+}
 
 
 function pushToNamedBucket(collection, numberToPush) {
@@ -1139,7 +1249,95 @@ function pushToNamedBucket(collection, numberToPush) {
 
 }
 
+function geoJsonPush(collection, numberToPush) {
 
+  // - NOTE TO SEND TO netlify update Bucket function it must be an array with a property_id 
+
+  // const payload = getMultipleSelectedRowObjectsDiscontinuous();
+  // const payload = getMultipleSelectedRowObjects();
+  // const payload = getSelectedRowObject();
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sheet1');
+  // const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sheet2');
+
+
+
+  const currentSheetObjArr = sheet2Json(sheet);
+  Logger.log("length: " + currentSheetObjArr.length);
+
+
+  const rows = currentSheetObjArr.filter(x => {
+    if ((x.RoadURL.includes("geojson"))) { return x }
+
+  })
+
+  // const miniRows = rows.map(x => ({
+  //   PARNO: x.PARNO,
+  //   RoadURL: x.RoadURL
+  // }));
+
+  let firstXRows = rows.slice(0, numberToPush);// get first 50 or less
+
+
+  // Updated payload: Wrap the array and collection name in an object
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      data: firstXRows,  // The array of objects
+      collectionName: collection  // The collection name as a string
+    }),
+    muteHttpExceptions: true
+  };
+
+
+  Logger.log(firstXRows);
+  Logger.log(typeof (firstXRows))
+
+  // const url = 'https://www.postb.in/1739670263592-0602835712488';
+  let url = 'https://nimble-dieffenbachia-92e8e2.netlify.app/.netlify/functions/updateNamedBucket';
+
+  Logger.log(url);
+
+
+  Logger.log(options);
+
+
+  try {
+    // Make the API request
+    const response = UrlFetchApp.fetch(url, options);
+
+    // Parse the JSON response if it is JSON
+    var result = JSON.parse(response.getContentText());
+
+    // Log the result
+
+    const myRows = result.message;
+    Logger.log(myRows);
+    for (var i = 0; i < myRows.length; i++) {
+
+      const myRow = myRows[i];
+      var AN = updateCell(sheet, myRow, 'RoadURL', "PUSHED");
+      // var AE = updateCell(sheet, myRow, 'WaterURL', "PUSHED");
+
+
+    }
+
+
+    // const APN = result.message.APN;
+    // const APN2 = result.message.APN2;
+    // const GEOM = result.message.GEOM;
+
+    // var AN = updateCell(sheet, myRow, 'APN', APN);
+    // var AE = updateCell(sheet, myRow, 'APN2', APN2);
+    // var AP = updateCell(sheet, myRow, 'GEOM', GEOM);
+
+  } catch (error) {
+    // Log any errors
+    Logger.log(error);
+  }
+
+}
 
 function autoPushToBucket() {
 
@@ -2183,33 +2381,158 @@ function wktToGeojson(wkt) {
   };
 }
 
+function normalizeGeoJSON1(input) {
+  if (!input || typeof input !== 'object') {
+    throw new Error('Input must be an object');
+  }
+
+  var geojson = {
+    type: input.type || 'Polygon',
+    coordinates: input.coordinates || []
+  };
+
+  if (input.bbox) {
+    geojson.bbox = input.bbox;
+  }
+
+  return geojson;
+}
+
+function normalizeGeoJSON(obj) {
+  if (!obj || typeof obj !== 'object') {
+    throw new Error('Input must be an object');
+  }
+
+  // Create clean GeoJSON structure
+  var geojson = {
+    type: obj.type || 'Polygon',
+    coordinates: obj.coordinates || []
+  };
+
+  // Validate and add bbox if present
+  if (Array.isArray(obj.bbox) && obj.bbox.length === 4) {
+    geojson.bbox = obj.bbox;
+  } else {
+    geojson.bbox = calculateBbox(obj.coordinates);
+  }
+
+  return geojson;
+}
+
+function calculateBbox(coordinates) {
+  if (!Array.isArray(coordinates) || coordinates.length === 0) {
+    return null;
+  }
+
+  var minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+
+  for (var i = 0; i < coordinates.length; i++) {
+    var ring = coordinates[i];
+    for (var j = 0; j < ring.length; j++) {
+      var lng = ring[j][0];
+      var lat = ring[j][1];
+      minLng = Math.min(minLng, lng);
+      minLat = Math.min(minLat, lat);
+      maxLng = Math.max(maxLng, lng);
+      maxLat = Math.max(maxLat, lat);
+    }
+  }
+  return [minLng, minLat, maxLng, maxLat];
+}
+
+function normalizeGeoJSONForGeojsonIO(obj) {
+  if (!obj || typeof obj !== 'object') {
+    throw new Error('Input must be an object');
+  }
+
+  // Create clean geometry
+  var geometry = {
+    type: obj.type || 'Polygon',
+    coordinates: obj.coordinates || []
+  };
+
+  // Add bbox if present
+  if (Array.isArray(obj.bbox) && obj.bbox.length === 4) {
+    geometry.bbox = obj.bbox;
+  }
+
+  // Wrap in Feature
+  var feature = {
+    type: 'Feature',
+    geometry: geometry,
+    properties: {}  // Empty properties for simple display
+  };
+
+  return feature;
+}
+
 function GeoJSONioUrlBuilder() {
 
   // {AAlink=https://www.realtor.com/realestateandhomes-detail/Alma-Rd_Jasper_AL_35501_M98724-43725?from=srp, AgentEmail=, address=Alma Rd, list_date=2024-03-17T23:25:39.000000Z, ACRES/PIECE=, =, flags=is_new_listing, RADIUS=20.0, AgentName=, state=Walker, county=2024-03-18T00:18:19.665Z, APN=, ppa=4000.0, RANGE_PPA=, lot_acres=41.0, updatedAt=al, listing_id=2.965226047E9, price=164000.0, NOTES=, GEOM=POLYGON((-111.179167643 32.5349351874,-111.179166834 32.5358422453,-111.180237626 32.5358413441,-111.180238435 32.5349342937,-111.179167643 32.5349351874)), PIECES=, COMP_AVG_DISTANCE=, relativeRow=4.0, APN2=, MIN_ACRES=5.0, lon=-87.214035, AgentPhone=, MAX_ACRES=10.0, absoluteRow=5.0, lat=33.802722}
 
-  var selection = SpreadsheetApp.getSelection();
-  var activerow = selection.getCurrentCell().getRow();
-  var sheet = SpreadsheetApp.getActiveSheet();
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sheet1');
+  let currentSheetObjArr = sheet2Json(sheet);
+  Logger.log("length: " + currentSheetObjArr.length);
 
-  const json = sheet2Json(sheet);
-  const myRow = json[activerow - 2];
-  const myWKT = myRow.GEOM;
-  Logger.log(myWKT);
+  const pushedRows = currentSheetObjArr.filter(x => {
+    if (!String(x.RoadURL || "")) { return x }
+  })
 
-  const geojson_data = wktToGeojson(myWKT);
-  Logger.log(geojson_data);
-
-  const encoded = encodeURIComponent(JSON.stringify(geojson_data));
-  Logger.log(encoded);
-
-  // http://geojson.io/#data=data:application/json,%7B%22type%22%3A%22LineString%22%2C%22coordinates%22%3A%5B%5B0%2C0%5D%2C%5B10%2C10%5D%5D%7D
-  const longUrl = `http://geojson.io/#data=data:application/json,${encoded}`;
-  console.log(longUrl);
-
-  const clickable = shortenUrl(longUrl);
+  let firstTenPushedRows = pushedRows.slice(0, 3);// get first 10 or less
+  Logger.log(JSON.stringify(firstTenPushedRows));
 
 
-  var ud = updateCell(sheet, myRow, 'geoJSONioUrl', clickable);
+  for (var i = 0; i < firstTenPushedRows.length; i++) {
+
+    let myRow = firstTenPushedRows[i];
+
+    const myParno = myRow.PARNO;
+
+    const filterObj = { PARNO: myParno };
+
+    try {
+
+      const myJSON = fetchMongoDBDataAPI(filterObj, "alcornMERGED2subset");
+      Logger.log(myJSON);
+      const myObjects = JSON.parse(myJSON);
+      let mongoRecords = myObjects.documents;
+      const mongoRecord = mongoRecords[0];
+      const geoJSONobj = mongoRecord.geometry;
+      Logger.log(geoJSONobj);
+      const geojson_data = normalizeGeoJSON(geoJSONobj);
+      Logger.log(geojson_data);
+      var buffered = turf.buffer(geojson_data, (100 * 0.000189394), 'miles')
+      // var buffered = turf.buffer(geojson_data, 100, {units: 'feet'});
+      const geoJsonObj = buffered.geometry;
+      const newGeoJsonObj = normalizeGeoJSONForGeojsonIO(geoJsonObj);
+      const newGeojsonString = JSON.stringify(newGeoJsonObj)
+      Logger.log(newGeojsonString);
+
+
+      const encoded = encodeURIComponent(newGeojsonString);
+      // const encoded = encodeURIComponent(newGeoJson);
+
+      Logger.log(encoded);
+
+      // http://geojson.io/#data=data:application/json,%7B%22type%22%3A%22LineString%22%2C%22coordinates%22%3A%5B%5B0%2C0%5D%2C%5B10%2C10%5D%5D%7D
+
+      const longUrl = `http://geojson.io/#data=data:application/json,${encoded}`;
+
+      // const longUrl = `https://geojson.io/next/#data=data:application/json,${encoded}`;
+      // https://geojson.io/next/ -- note that this needs a url shortner - url too long
+
+
+      console.log(longUrl);
+      // const clickable = shortenUrl(longUrl);
+
+
+      var ud = updateCell(sheet, myRow, 'RoadURL', longUrl);
+
+    } catch (error) {
+      Logger.log(error)
+    }
+
+  }
 
 }
 
@@ -2342,7 +2665,5 @@ function aggregateTest() {
 
   const res = aggregateMongoDBData(Number(myRow.lon), Number(myRow.lat), "wisconsinSold")
   Logger.log(res);
-
-
 
 }

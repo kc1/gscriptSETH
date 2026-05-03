@@ -9,15 +9,15 @@ function onOpen() {
 
     { name: '3) Update selected rows with Screenshot Links from Named Mongo bucket (alcornBucket) ', functionName: 'updateWithScreenshotPaths' },
 
-    { name: '4A) GeoJSONio url builder from collection', functionName: 'GeoJSONioUrlBuilder' },
+    // { name: '4A) GeoJSONio url builder from collection', functionName: 'GeoJSONioUrlBuilder' },
 
-    { name: '4B) GeoJSONio link push to collection', functionName: 'alcornGeoJsonPush' },
+    { name: '4A) Push Road Rows to collection', functionName: 'alcornGeoJsonPush' },
 
-    { name: '4C) Run buildScreenshotsFromLink (runSethApp) with IMAGEAI to generate screenshots ', functionName: 'postToBuildScreenshotsFromLink' },
+    { name: '4B) Run buildScreenshotsFromLink (runSethApp) with IMAGEAI to generate screenshots ', functionName: 'postToBuildScreenshotsFromLink' },
 
-    { name: '4D) Update rows with Road Screenshot Links from collection (alcornGeoJsonBucket) ', functionName: 'updateWithRoadScreenshotPaths' },
+    { name: '4C) Update rows with Road Screenshot Links from collection (alcornGeoJsonBucket) ', functionName: 'updateWithRoadScreenshotPaths' },
 
-    { name: '4E)  Y/N on Available Road using WaterURL with LLM  -- works in parallel', functionName: 'roadAvailableUsingLLM' },
+    { name: '4D)  Y/N on Available Road using WaterURL with LLM  -- works in parallel', functionName: 'roadAvailableUsingLLM' },
 
 
 
@@ -1160,7 +1160,7 @@ function alcornPush() {
 
 function alcornGeoJsonPush() {
 
-  resp = geoJsonPush('alcornGeoJsonBucket', 3);
+  resp = geoJsonPush('alcornGeoJsonBucket', 20);
 
 }
 
@@ -1267,7 +1267,7 @@ function geoJsonPush(collection, numberToPush) {
 
 
   const rows = currentSheetObjArr.filter(x => {
-    if ((x.RoadURL.includes("geojson"))) { return x }
+    if (x.RoadURL == "") { return x }
 
   })
 
@@ -2522,7 +2522,7 @@ function GeoJSONioUrlBuilder() {
       // https://geojson.io/next/ -- note that this needs a url shortner - url too long
 
 
-      console.log(longUrl);
+      Logger.log(longUrl);
       // const clickable = shortenUrl(longUrl);
 
 
@@ -2531,6 +2531,8 @@ function GeoJSONioUrlBuilder() {
     } catch (error) {
       Logger.log(error)
     }
+
+    Logger.log("FIN")
 
   }
 
@@ -2666,4 +2668,7 @@ function aggregateTest() {
   const res = aggregateMongoDBData(Number(myRow.lon), Number(myRow.lat), "wisconsinSold")
   Logger.log(res);
 
+
+
 }
+

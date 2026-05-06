@@ -15,7 +15,7 @@ function onOpen() {
 
     { name: '4B) Run buildScreenshotsFromLink (runSethApp) with IMAGEAI to generate screenshots ', functionName: 'postToBuildScreenshotsFromLink' },
 
-    { name: '4C) Update rows with Road Screenshot Links from collection (alcornGeoJsonBucket) ', functionName: 'updateWithRoadScreenshotPaths' },
+    { name: '4C) Update PUSHED rows with Road Screenshot Links from collection (alcornGeoJsonBucket)-- wait 30 min', functionName: 'updateWithRoadScreenshotPaths' },
 
     { name: '4D)  Y/N on Available Road using WaterURL with LLM  -- works in parallel', functionName: 'roadAvailableUsingLLM' },
 

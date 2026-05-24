@@ -112,7 +112,7 @@ function promptStage1() {
 }
 
 function stage1Status() {
-  const out = statusCalculator("RoadAvailable", "NealNotes", "STATUS");
+  const out = statusCalculator("RoadAvailable", "NealNotes", "Status");
   Logger.log(out);
 }
 
